@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # MySQL Master
+  sia_master_mysql:
+    image: mysql:8.0
+    container_name: sia_master_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: sia_root_password
+      MYSQL_USER: sia_username
+      MYSQL_PASSWORD: sia_password
+      MYSQL_DATABASE: sia_db
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_master_data:/var/lib/mysql
+    networks:
+      - sia_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$sia_root_password"]
+      retries: 10
+      interval: 5s
+      timeout: 20s
+      start_period: 10s
+
+  # MySQL Slave
+  sia_slave_mysql:
+    image: mysql:8.0
+    container_name: sia_slave_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: sia_root_password
+      MYSQL_USER: sia_username
+      MYSQL_PASSWORD: sia_password
+      MYSQL_DATABASE: sia_db
+    ports:
+      - "3307:3307"
+    volumes:
+      - mysql_slave_data:/var/lib/mysql
+    networks:
+      - sia_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$sia_root_password"]
+      retries: 10
+      interval: 5s
+      timeout: 20s
+      start_period: 10s
+
+  # Backend Node/Express App (Dynamic Scale)
+  sia_backend:
+    image: sia_backend_image
+    container_name: sia_backend
+    ports:
+      - "8081:8081"
+    environment:
+      - DB_HOST=sia_master_mysql
+      - DB_PORT=3306
+      - DB_USERNAME=sia_username
+      - DB_PASSWORD=sia_password
+      - DB_NAME=sia_db
+    networks:
+      - sia_network
+    deploy:
+      replicas: ${N_BACKENDS:-1}
+    depends_on:
+      - sia_master_mysql  # Ensure master is up before starting backend
+
+  # Nginx Load Balancer
+  sia_nginx:
+    image: nginx:latest
+    container_name: sia_nginx
+    ports:
+      - "4000:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - sia_backend
+    networks:
+      - sia_network
+
+  # Frontend React App
+  sia_frontend:
+    image: sia_frontend_image
+    container_name: sia_frontend
+    build:
+      context: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_BACKEND_URL=http://sia_nginx:80
+    networks:
+      - sia_network
+
+volumes:
+  mysql_master_data:
+  mysql_slave_data:
+
+networks:
+  sia_network:
+    driver: bridge
+
