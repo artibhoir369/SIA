@@ -3,7 +3,7 @@ SIA
 
 ## Overview
 
-The `start.sh` script is used to run docker compose and 
+The `start.sh` script is used to run docker compose and other tasks
 
 ## Prerequisites
 
